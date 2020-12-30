@@ -19,7 +19,8 @@ return [
     'redirectUri' => env('REDDIT_REDIRECT_URI'),
     'userAgent' => env('REDDIT_USER_AGENT'),
     'scopes' => env('REDDIT_SCOPES', [
-        'read'
+        'read',
+        'account'
     ])
 
 ];

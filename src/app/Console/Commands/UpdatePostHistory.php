@@ -3,8 +3,8 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use App\PostWatcher;
-use App\PostHistory;
+use App\Models\PostWatcher;
+use App\Models\PostHistory;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 class UpdatePostHistory extends Command
@@ -47,15 +47,13 @@ class UpdatePostHistory extends Command
         $date->modify('-2 hours');
         $last2hours = $date->format('Y-m-d H:i:s');
         $postWatchers = PostWatcher::where('created_at', '>=', $yesterday)->get();
-        echo $last2hours.PHP_EOL;
-        echo (new \DateTime)->format('Y-m-d H:i:s').PHP_EOL;
 
         // Generate the "fullname" for each post id
         $postList = [];
         foreach ($postWatchers as $key => $pw) {
 
             if (strtotime($pw->created_at) < strtotime($last2hours) && ($pw->current_karma - $pw->starting_karma) < 10) {
-                $pw->delete();
+//                $pw->delete();
             } else {
                 $postList[] = "t3_".$pw->reddit_id;
             }

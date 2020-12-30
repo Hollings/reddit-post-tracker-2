@@ -1,33 +1,29 @@
 <?php
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-use Rudolf\OAuth2\Client\Provider\Reddit;
-use App\Models\PostHistory;
 use GuzzleHttp;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
+use Rudolf\OAuth2\Client\Provider\Reddit;
 
 class PostWatcher extends Model
 {
+    // TODO actually set fillable to something
+    protected $guarded = [];
 
-    public static function test()
+    public static function getHeaders()
     {
         $reddit = new Reddit([
-            'clientId'      => config('reddit.clientId'),
-            'clientSecret'  => config('reddit.clientSecret'),
-            'redirectUri'   => config('reddit.redirectUri'),
-            'userAgent'     => config('reddit.userAgent'),
-            'scopes'        => config('reddit.scopes'),
+            'clientId'     => config('reddit.clientId'),
+            'clientSecret' => config('reddit.clientSecret'),
+            'redirectUri'  => config('reddit.redirectUri'),
+            'userAgent'    => config('reddit.userAgent'),
+            'scopes'       => config('reddit.scopes'),
         ]);
         $accessToken = $reddit->getAccessToken('client_credentials');
         $headers = $reddit->getHeaders($accessToken);
 
-        $client = new GuzzleHttp\Client();
-        dump($headers);
-
-        $res = $client->get('https://www.reddit.com/r/videos/new.json?limit=25', $headers);
-        dump($res->getStatusCode()); // 200
-        dump(json_decode($res->getBody())); // { "type": "User", ....
+        return $headers;
     }
 
 
@@ -36,17 +32,13 @@ class PostWatcher extends Model
         return $this->hasMany('App\Models\PostHistory');
     }
 
-    public static function frontPage($sub = "all")
+    public static function submissionData($sub = "all", $mode = 'hot', $count = 5)
     {
-        $r = new Reddit;
-        $link = "/r/all";
-        $response = $r->getRawJSON($link);
-        $frontPageIds = [];
-        foreach ($response->data->children as $key => $child) {
-            array_push($frontPageIds, $child->data->id);
-        }
-        return $frontPageIds;
-        return json_encode($response);
+        $client = new GuzzleHttp\Client();
+        $headers = self::getHeaders();
+        $res = $client->get("https://www.reddit.com/r/$sub/$mode.json?limit=$count", $headers);
+        $data = json_decode($res->getBody());
+        return $data;
     }
 
     public function getCurrentData()
@@ -76,27 +68,43 @@ class PostWatcher extends Model
 
     public static function GetRandomFromRising($count = 25)
     {
-    	$r = new Reddit;
-    	$response = $r->getListing('all/rising',25);
-    	$children = $response->data->children??[];
-    	$rand_keys = array_rand($children, 3);
-    	$reddit_idList = [];
-    	foreach ($rand_keys as $key => $value) {
-    		$reddit_idList[] = $children[$value]->data->id;
-    	}
+        $data = self::submissionData('all', 'rising', $count)->data->children;
+        $rand_keys = array_rand($data, 3);
 
+        foreach ($rand_keys as $key => $value) {
+            $post = $data[$value]->data;
+            PostWatcher::firstOrCreate([
+                'reddit_id'        => $post->id,
+                'reddit_permalink' => $post->permalink,
+                'title'            => $post->title,
+                'thumbnail'        => $post->thumbnail,
+                'raw'              => json_encode($post),
+                'interesting'      => false
+            ],
+                [
+                    'current_karma'  => $post->score,
+                    'starting_karma' => $post->score
+                ]);
 
-    	// $response = $r->getListing('all/new',50);
-    	// $children = $response->data->children??[];
-    	// $rand_keys = array_rand($children, 2);
-    	// foreach ($rand_keys as $key => $value) {
-    	// 	$reddit_idList[] = $children[$value]->data->id;
-    	// }
-
-        foreach ($reddit_idList as $key => $reddit_id) {
-            PostWatcher::getOrCreatePostWatcherFromRedditId($reddit_id);
+            $h = PostHistory::create([
+                'score' => $post->score,
+                // TODO 'on_front_page' => $post->
+                'num_comments' => $post->num_comments
+            ]);
         }
-        return $reddit_idList;
+
+
+        // $response = $r->getListing('all/new',50);
+        // $children = $response->data->children??[];
+        // $rand_keys = array_rand($children, 2);
+        // foreach ($rand_keys as $key => $value) {
+        // 	$reddit_idList[] = $children[$value]->data->id;
+        // }
+
+//        foreach ($reddit_idList as $key => $reddit_id) {
+//            PostWatcher::getOrCreatePostWatcherFromRedditId($reddit_id);
+//        }
+//        return $reddit_idList;
     }
 
     public static function getOrCreatePostWatcherFromRedditId($reddit_id)
